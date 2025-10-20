@@ -1,0 +1,82 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Thumbnails and metadata
+._*
+.Spotlight-V100
+.Trashes
+
+# Editor/IDE
+.idea/
+*.iml
+*.iws
+.vscode/
+# GoLand workspace files
+.idea/**/workspace.xml
+.idea/**/tasks.xml
+# JetBrains caches
+out/
+
+# Go build artifacts
+/bin/
+/build/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.prof
+coverage.out
+coverage/
+
+# Go vendor and module cache (vendor tracked only if you use it intentionally)
+vendor/
+
+# Go tool/cache (usually outside repo, but safe)
+pkg/
+
+# AWS SAM / Lambda build artifacts
+.aws-sam/
+samconfig.toml
+
+# Environment / secrets
+.env
+.env.*
+*.pem
+*.key
+*.crt
+*.private
+credentials
+.aws/credentials
+
+# Logs and temp
+*.log
+tmp/
+temp/
+*.tmp
+
+# Package managers / languages (safe defaults)
+node_modules/
+npm-debug.log*
+yarn-error.log
+package-lock.json
+pnpm-lock.yaml
+
+# Python artifacts (if present)
+__pycache__/
+*.py[cod]
+*.pyo
+
+# SQLite/db files
+*.db
+*.sqlite
+*.sqlite3
+
+# Misc
+*.swp
+*~
+.idea_modules/

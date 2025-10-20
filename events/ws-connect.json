@@ -1,0 +1,10 @@
+{
+  "requestContext": {
+    "routeKey": "$connect",
+    "connectionId": "abc123",
+    "eventType": "CONNECT"
+  },
+  "headers": {},
+  "queryStringParameters": { "token": "<JWT>" },
+  "isBase64Encoded": false
+}
