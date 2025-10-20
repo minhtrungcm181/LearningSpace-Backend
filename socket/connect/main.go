@@ -26,8 +26,8 @@ import (
 )
 
 var (
-	tableName   = mustEnv("TABLE_NAME")       // ví dụ: lt-socket-connections-dev
-	roomID      = getEnv("ROOM_ID", "global") // 1 room global
+	tableName   = mustEnv("TABLE_NAME")
+	roomID      = getEnv("ROOM_ID", "global")
 	region      = getEnv("AWS_REGION", "ap-northeast-1")
 	userPoolID  = mustEnv("COGNITO_USER_POOL_ID")
 	appClientID = mustEnv("COGNITO_APP_CLIENT_ID")
