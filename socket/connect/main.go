@@ -67,8 +67,6 @@ func init() {
 	jwks = jwksCache{keys: map[string]*rsa.PublicKey{}, exp: time.Time{}}
 }
 
-func main() { lambda.Start(handler) }
-
 // entry
 func handler(ctx context.Context, req events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
 	if req.RequestContext.RouteKey != "$connect" {
@@ -239,3 +237,5 @@ func resp(code int, body string) events.APIGatewayProxyResponse {
 		Body:       body,
 	}
 }
+
+func main() { lambda.Start(handler) }
