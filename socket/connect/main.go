@@ -115,11 +115,12 @@ func handler(ctx context.Context, req events.APIGatewayWebsocketProxyRequest) (e
 		return resp(401, "invalid token_use"), nil
 	}
 	sub := str(claims["sub"])
-	username := str(claims["cognito:username"])
+	username := str(claims["name"])
 	email := str(claims["email"])
 
 	// 4) Ghi vào DynamoDB
 	connID := req.RequestContext.ConnectionID
+	ttl, _ := next5AMUnixSeconds(time.Now(), "Asia/Ho_Chi_Minh")
 	_, err = ddbClient.PutItem(ctx, &ddb.PutItemInput{
 		TableName: aws.String(tableName),
 		Item: map[string]types.AttributeValue{
@@ -129,6 +130,7 @@ func handler(ctx context.Context, req events.APIGatewayWebsocketProxyRequest) (e
 			"username":     &types.AttributeValueMemberS{Value: username},
 			"email":        &types.AttributeValueMemberS{Value: email},
 			"connectedAt":  &types.AttributeValueMemberN{Value: strconv.FormatInt(time.Now().Unix(), 10)},
+			"expiresAt":    &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", ttl)},
 		},
 		ConditionExpression: aws.String("attribute_not_exists(connectionId)"),
 	})
@@ -145,6 +147,27 @@ func handler(ctx context.Context, req events.APIGatewayWebsocketProxyRequest) (e
 func extractToken(req events.APIGatewayWebsocketProxyRequest) string {
 	// Chỉ lấy từ query ?token=
 	return req.QueryStringParameters["token"]
+}
+
+func next5AMUnixSeconds(t time.Time, tz string) (int64, error) {
+	loc, err := time.LoadLocation(tz) // "Asia/Ho_Chi_Minh"
+	if err != nil {
+		return 0, err
+	}
+	now := t.In(loc)
+
+	// 05:00 hôm nay theo local
+	today5 := time.Date(now.Year(), now.Month(), now.Day(), 5, 0, 0, 0, loc)
+
+	var target time.Time
+	if now.Before(today5) {
+		target = today5 // chưa tới 05:00 -> dùng 05:00 hôm nay
+	} else {
+		target = today5.Add(24 * time.Hour) // đã qua 05:00 -> 05:00 ngày mai
+	}
+
+	// TTL cần epoch seconds (UTC-based). Unix() luôn là epoch seconds.
+	return target.Unix(), nil
 }
 
 func getPublicKey(kid string) (*rsa.PublicKey, error) {

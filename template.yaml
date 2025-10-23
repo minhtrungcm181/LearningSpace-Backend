@@ -57,8 +57,11 @@ Resources:
   AuthFn:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Sub "auth-fn-${StageName}"
       CodeUri: auth/
       Handler: bootstrap
+      Policies:
+        - AWSLambdaBasicExecutionRole
       Environment:
         Variables:
           APP_CLIENT_ID: !Ref AppClientId
@@ -78,9 +81,9 @@ Resources:
           Properties:
             { ApiId: !Ref HttpApi, Path: /me, Method: GET, Auth: { Authorizer: CognitoAuthorizer } }
     Metadata:
-      BuildMethod: makefile
-      BuildProperties:
-        MakefilePath: auth/Makefile
+        BuildMethod: makefile
+        BuildProperties:
+          MakefilePath: auth/Makefile
 
   #####################################
   # WebSocket API (ApiGatewayV2)
@@ -99,70 +102,69 @@ Resources:
       FunctionName: !Sub "socket-connect-${StageName}"
       CodeUri: socket/connect/
       Handler: bootstrap
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - DynamoDBCrudPolicy: { TableName: !Ref ConnectionsTable }
+        - Statement:
+            - Effect: Allow
+              Action: execute-api:ManageConnections
+              Resource: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/${StageName}/POST/@connections/*"
       Environment:
         Variables:
           TABLE_NAME: !Ref ConnectionsTable
           ROOM_ID: global
           COGNITO_USER_POOL_ID: !Ref UserPoolId
           COGNITO_APP_CLIENT_ID: !Ref AppClientId
-      Policies:
-        - DynamoDBCrudPolicy: { TableName: !Ref ConnectionsTable }
+        # fallback khi invoke không có requestContext (local/unit test)
+          WS_CALLBACK_URL: !Sub "https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}"
     Metadata:
       BuildMethod: makefile
       BuildProperties:
         MakefilePath: socket/connect/Makefile
 
   # Lambda cho $disconnect: xoá connection
-#  WsDisconnectFn:
-#    Type: AWS::Serverless::Function
-#    Properties:
-#      CodeUri: socket/disconnect/
-#      Handler: bootstrap
-#      Environment:
-#        Variables:
-#          TABLE_NAME: !Ref ConnectionsTable
-#          ROOM_ID: global
-#      Policies:
-#        - DynamoDBCrudPolicy: { TableName: !Ref ConnectionsTable }
-#    Metadata:
-#      BuildMethod: makefile
-#      BuildProperties:
-#        MakefilePath: socket/disconnect/Makefile
-
-  # Lambda cho $default: báo lỗi/echo
-#  WsDefaultFn:
-#    Type: AWS::Serverless::Function
-#    Properties:
-#      CodeUri: socket/default/
-#      Handler: bootstrap
-#    Metadata:
-#      BuildMethod: makefile
-#      BuildProperties:
-#        MakefilePath: socket/default/Makefile
+  WsDisconnectFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "socket-disconnect-${StageName}"
+      CodeUri: socket/disconnect/
+      Handler: bootstrap
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - DynamoDBCrudPolicy: { TableName: !Ref ConnectionsTable }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ConnectionsTable
+          ROOM_ID: global
+    Metadata:
+      BuildMethod: makefile
+      BuildProperties:
+        MakefilePath: socket/disconnect/Makefile
 
   # Lambda gửi broadcast: query room "global" và PostToConnection
-#  WsSendFn:
-#    Type: AWS::Serverless::Function
-#    Properties:
-#      CodeUri: socket/send/
-#      Handler: bootstrap
-#      Environment:
-#        Variables:
-#          TABLE_NAME: !Ref ConnectionsTable
-#          ROOM_ID: global
-#          # Dùng khi hàm không chạy trong ngữ cảnh WS; nếu chạy từ route WS có thể lấy domain/stage từ event
-#          WS_CALLBACK_URL: !Sub "https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}"
-#      Policies:
-#        - DynamoDBReadPolicy: { TableName: !Ref ConnectionsTable }
-#        - Statement:
-#            - Effect: Allow
-#              Action: [ "execute-api:ManageConnections" ]
-#              Resource:
-#                - !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/${StageName}/POST/@connections/*"
-#    Metadata:
-#      BuildMethod: makefile
-#      BuildProperties:
-#        MakefilePath: socket/send/Makefile
+  WsSendFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "socket-sendmessage-${StageName}"
+      CodeUri: socket/send/
+      Handler: bootstrap
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - DynamoDBReadPolicy: { TableName: !Ref ConnectionsTable }
+        - Statement:
+            - Effect: Allow
+              Action: execute-api:ManageConnections
+              Resource: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/${StageName}/POST/@connections/*"
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ConnectionsTable
+          ROOM_ID: global
+          # fallback cho local/unit test
+          WS_CALLBACK_URL: !Sub "https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}"
+    Metadata:
+      BuildMethod: makefile
+      BuildProperties:
+        MakefilePath: socket/send/Makefile
 
   ##############
   # Integrations
@@ -174,26 +176,19 @@ Resources:
       IntegrationType: AWS_PROXY
       IntegrationUri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WsConnectFn.Arn}/invocations
 
-#  DisconnectIntegration:
-#    Type: AWS::ApiGatewayV2::Integration
-#    Properties:
-#      ApiId: !Ref WebSocketApi
-#      IntegrationType: AWS_PROXY
-#      IntegrationUri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WsDisconnectFn.Arn}/invocations
+  DisconnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WsDisconnectFn.Arn}/invocations
 
-#  DefaultIntegration:
-#    Type: AWS::ApiGatewayV2::Integration
-#    Properties:
-#      ApiId: !Ref WebSocketApi
-#      IntegrationType: AWS_PROXY
-#      IntegrationUri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WsDefaultFn.Arn}/invocations
-
-#  SendIntegration:
-#    Type: AWS::ApiGatewayV2::Integration
-#    Properties:
-#      ApiId: !Ref WebSocketApi
-#      IntegrationType: AWS_PROXY
-#      IntegrationUri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WsSendFn.Arn}/invocations
+  SendIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WsSendFn.Arn}/invocations
 
   #########
   # Routes
@@ -203,36 +198,24 @@ Resources:
     Properties:
       ApiId: !Ref WebSocketApi
       RouteKey: $connect
-      AuthorizationType: None
+      AuthorizationType: NONE
       Target: !Sub integrations/${ConnectIntegration}
 
-#  RouteDisconnect:
-#    Type: AWS::ApiGatewayV2::Route
-#    Properties:
-#      ApiId: !Ref WebSocketApi
-#      RouteKey: $disconnect
-#      AuthorizationType: NONE
-#      Target: !Sub integrations/${DisconnectIntegration}
+  RouteDisconnect:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $disconnect
+      AuthorizationType: NONE
+      Target: !Sub integrations/${DisconnectIntegration}
 
-#  RouteDefault:
-#    Type: AWS::ApiGatewayV2::Route
-#    Properties:
-#      ApiId: !Ref WebSocketApi
-#      RouteKey: $default
-#      AuthorizationType: NONE
-#      Target: !Sub integrations/${DefaultIntegration}
-
-#  RouteSend:
-#    Type: AWS::ApiGatewayV2::Route
-#    Properties:
-#      ApiId: !Ref WebSocketApi
-#      RouteKey: sendMessage
-#      AuthorizationType: NONE
-#      Target: !Sub integrations/${SendIntegration}
-  ######################
-  # JWT Authorizer
-  ######################
-
+  RouteSend:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: sendMessage
+      AuthorizationType: NONE
+      Target: !Sub integrations/${SendIntegration}
 
   ######################
   # Deployment + Stage
@@ -241,9 +224,8 @@ Resources:
     Type: AWS::ApiGatewayV2::Deployment
     DependsOn:
       - RouteConnect
-#      - RouteDisconnect
-#      - RouteDefault
-#      - RouteSend
+      - RouteDisconnect
+      - RouteSend
     Properties:
       ApiId: !Ref WebSocketApi
 
@@ -266,29 +248,21 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*/$connect"
 
-#  PermDisconnect:
-#    Type: AWS::Lambda::Permission
-#    Properties:
-#      FunctionName: !Ref WsDisconnectFn
-#      Action: lambda:InvokeFunction
-#      Principal: apigateway.amazonaws.com
-#      SourceArn: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/${StageName}/$disconnect"
-#
-#  PermDefault:
-#    Type: AWS::Lambda::Permission
-#    Properties:
-#      FunctionName: !Ref WsDefaultFn
-#      Action: lambda:InvokeFunction
-#      Principal: apigateway.amazonaws.com
-#      SourceArn: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/${StageName}/$default"
-#
-#  PermSend:
-#    Type: AWS::Lambda::Permission
-#    Properties:
-#      FunctionName: !Ref WsSendFn
-#      Action: lambda:InvokeFunction
-#      Principal: apigateway.amazonaws.com
-#      SourceArn: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/${StageName}/sendMessage"
+  PermDisconnect:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref WsDisconnectFn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*/$disconnect"
+
+  PermSend:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref WsSendFn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*/sendMessage"
 
 Outputs:
   ApiUrl:
@@ -296,8 +270,5 @@ Outputs:
   WebSocketUrl:
     Description: wss URL cho client
     Value: !Sub "wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}"
-#  WebSocketCallbackUrl:
-#    Description: HTTP base để Lambda gọi @connections
-#    Value: !Sub "https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}"
   ConnectionsTableName:
     Value: !Ref ConnectionsTable
